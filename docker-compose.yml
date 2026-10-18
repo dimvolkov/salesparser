@@ -48,12 +48,15 @@ services:
     labels:
       - traefik.enable=${TRAEFIK_ENABLE:-true}
       - traefik.docker.network=dokploy-network
-      - traefik.http.routers.salesparser.rule=Host(`${DOMAIN:-salesparser.example.com}`)
+      - traefik.http.routers.salesparser.rule=Host(`${DOMAIN:?задайте DOMAIN}`)
       - traefik.http.routers.salesparser.entrypoints=websecure
       - traefik.http.routers.salesparser.tls.certresolver=letsencrypt
-      - traefik.http.routers.salesparser-http.rule=Host(`${DOMAIN:-salesparser.example.com}`)
+      # Выше, чем у wildcard-маршрутов других сервисов (по умолчанию приоритет = длина правила)
+      - traefik.http.routers.salesparser.priority=1000
+      - traefik.http.routers.salesparser-http.rule=Host(`${DOMAIN:?задайте DOMAIN}`)
       - traefik.http.routers.salesparser-http.entrypoints=web
       - traefik.http.routers.salesparser-http.middlewares=salesparser-https
+      - traefik.http.routers.salesparser-http.priority=1000
       - traefik.http.middlewares.salesparser-https.redirectscheme.scheme=https
       - traefik.http.services.salesparser.loadbalancer.server.port=8000
 
