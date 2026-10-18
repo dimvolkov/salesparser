@@ -1,0 +1,212 @@
+import hmac
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.catalog import refresh_products
+from app.config import settings
+from app.db import get_session
+from app.models import Product, ScrapeRun, Source, SourceCategory, SourceProduct
+from app.normalize import normalize_ean, normalize_sku
+from app.web.common import category_tree, flat_tree, load_sources, templates
+
+COOKIE = "sp_admin"
+
+
+def is_admin(request: Request) -> bool:
+    return hmac.compare_digest(request.cookies.get(COOKIE, ""), settings.admin_token)
+
+
+def require_admin(request: Request):
+    if not is_admin(request):
+        raise HTTPException(303, headers={"Location": f"/admin/login?next={request.url.path}"})
+
+
+router = APIRouter(prefix="/admin")
+protected = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+
+
+def back(request: Request, default: str) -> RedirectResponse:
+    target = request.headers.get("referer") or default
+    return RedirectResponse(target, status_code=303)
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_form(request: Request, next: str = "/admin", error: bool = False):
+    return templates.TemplateResponse(request, "admin/login.html", {"next": next, "error": error})
+
+
+@router.post("/login")
+async def login(token: str = Form(...), next: str = Form("/admin")):
+    if not hmac.compare_digest(token, settings.admin_token):
+        return RedirectResponse(f"/admin/login?error=1&next={next}", status_code=303)
+    resp = RedirectResponse(next if next.startswith("/admin") else "/admin", status_code=303)
+    resp.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=30 * 86400)
+    return resp
+
+
+@router.get("/logout")
+async def logout():
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(COOKIE)
+    return resp
+
+
+@protected.get("", response_class=HTMLResponse)
+async def dashboard(request: Request, session: AsyncSession = Depends(get_session)):
+    sources = await load_sources(session, enabled_only=False)
+    last_runs = {}
+    for s in sources:
+        last_runs[s.id] = await session.scalar(
+            select(ScrapeRun).where(ScrapeRun.source_id == s.id).order_by(ScrapeRun.id.desc()).limit(1))
+    counts = dict((await session.execute(
+        select(SourceProduct.source_id, func.count()).group_by(SourceProduct.source_id))).all())
+    unmapped = dict((await session.execute(
+        select(SourceCategory.source_id, func.count()).where(SourceCategory.category_id.is_(None))
+        .group_by(SourceCategory.source_id))).all())
+    unmatched = await session.scalar(select(func.count()).select_from(SourceProduct)
+                                     .where(SourceProduct.product_id.is_(None)))
+    products = await session.scalar(select(func.count()).select_from(Product))
+    return templates.TemplateResponse(request, "admin/dashboard.html", {
+        "sources": sources, "last_runs": last_runs, "counts": counts, "unmapped": unmapped,
+        "unmatched": unmatched, "products": products, "settings": settings,
+    })
+
+
+@protected.post("/sources/{source_id}/run")
+async def queue_run(request: Request, source_id: int, session: AsyncSession = Depends(get_session)):
+    await _queue(session, [source_id])
+    return back(request, "/admin")
+
+
+@protected.post("/run-all")
+async def queue_all(request: Request, session: AsyncSession = Depends(get_session)):
+    ids = (await session.scalars(select(Source.id).where(Source.enabled))).all()
+    await _queue(session, list(ids))
+    return back(request, "/admin")
+
+
+async def _queue(session: AsyncSession, ids: list[int]):
+    busy = set((await session.scalars(select(ScrapeRun.source_id)
+                                      .where(ScrapeRun.status.in_(["queued", "running"])))).all())
+    for sid in ids:
+        if sid not in busy:
+            session.add(ScrapeRun(source_id=sid, status="queued", trigger="manual"))
+    await session.commit()
+
+
+@protected.post("/sources/{source_id}/toggle")
+async def toggle(request: Request, source_id: int, session: AsyncSession = Depends(get_session)):
+    source = await session.get(Source, source_id)
+    if source:
+        source.enabled = not source.enabled
+        await session.commit()
+    return back(request, "/admin")
+
+
+@protected.get("/runs", response_class=HTMLResponse)
+async def runs(request: Request, session: AsyncSession = Depends(get_session)):
+    rows = (await session.execute(
+        select(ScrapeRun, Source.title).join(Source).order_by(ScrapeRun.id.desc()).limit(100))).all()
+    return templates.TemplateResponse(request, "admin/runs.html", {"rows": rows})
+
+
+@protected.get("/categories", response_class=HTMLResponse)
+async def categories(request: Request, source: int | None = None, only_unmapped: bool = False,
+                     session: AsyncSession = Depends(get_session)):
+    sources = [s for s in await load_sources(session, enabled_only=False) if not s.is_master]
+    current = next((s for s in sources if s.id == source), sources[0] if sources else None)
+    roots, _ = await category_tree(session)
+    rows = []
+    if current:
+        q = select(SourceCategory).where(SourceCategory.source_id == current.id).order_by(SourceCategory.position)
+        if only_unmapped:
+            q = q.where(SourceCategory.category_id.is_(None))
+        rows = (await session.scalars(q)).all()
+    by_id = {r.id: r for r in rows}
+    return templates.TemplateResponse(request, "admin/categories.html", {
+        "sources": sources, "current": current, "rows": rows, "by_id": by_id,
+        "options": flat_tree(roots), "only_unmapped": only_unmapped,
+    })
+
+
+@protected.post("/categories/{sc_id}")
+async def map_category(request: Request, sc_id: int, category_id: str = Form(""),
+                       session: AsyncSession = Depends(get_session)):
+    sc = await session.get(SourceCategory, sc_id)
+    if sc is None:
+        raise HTTPException(404)
+    if (await session.get(Source, sc.source_id)).is_master:
+        raise HTTPException(400, "Категории ведущего источника и есть единое дерево")
+    sc.category_id = int(category_id) if category_id.isdigit() else None
+    sc.mapping_locked = True
+    await session.flush()
+    await refresh_products(session)
+    await session.commit()
+    return back(request, "/admin/categories")
+
+
+@protected.get("/unmatched", response_class=HTMLResponse)
+async def unmatched(request: Request, session: AsyncSession = Depends(get_session)):
+    rows = (await session.execute(
+        select(SourceProduct, Source.title).join(Source).where(SourceProduct.product_id.is_(None))
+        .order_by(Source.title, SourceProduct.name).limit(300))).all()
+    candidates = {}
+    for sp, _ in rows:
+        candidates[sp.id] = (await session.execute(text("""
+            SELECT id, name, similarity(name, :n) AS score FROM product
+            WHERE similarity(name, :n) > 0.2 ORDER BY score DESC LIMIT 3
+        """), {"n": sp.name})).mappings().all()
+    return templates.TemplateResponse(request, "admin/unmatched.html", {"rows": rows, "candidates": candidates})
+
+
+@protected.post("/unmatched/{sp_id}/link")
+async def link_product(request: Request, sp_id: int, product_id: str = Form(""),
+                       session: AsyncSession = Depends(get_session)):
+    sp = await session.get(SourceProduct, sp_id)
+    if sp is None:
+        raise HTTPException(404)
+    if product_id.strip().isdigit():
+        product = await session.get(Product, int(product_id))
+    else:
+        product = None
+    if product is None:
+        raise HTTPException(400, "Позиция с таким ID не найдена")
+    sp.product_id, sp.match_locked = product.id, True
+    await session.flush()
+    await refresh_products(session)
+    await session.commit()
+    return back(request, "/admin/unmatched")
+
+
+@protected.post("/unmatched/{sp_id}/create")
+async def create_product(request: Request, sp_id: int, session: AsyncSession = Depends(get_session)):
+    sp = await session.get(SourceProduct, sp_id)
+    if sp is None:
+        raise HTTPException(404)
+    if sp.product_id is not None:
+        raise HTTPException(400, "Товар уже сопоставлен — сначала отвяжите его")
+    ean, sku = normalize_ean(sp.ean), normalize_sku(sp.sku)
+    taken_ean = ean and await session.scalar(select(Product.id).where(Product.ean == ean))
+    taken_sku = sku and await session.scalar(select(Product.id).where(Product.sku == sku))
+    product = Product(name=sp.name, brand=sp.brand, ean=None if taken_ean else ean, sku=None if taken_sku else sku)
+    session.add(product)
+    await session.flush()
+    sp.product_id, sp.match_locked = product.id, True
+    await session.flush()
+    await refresh_products(session)
+    await session.commit()
+    return back(request, "/admin/unmatched")
+
+
+@protected.post("/source-products/{sp_id}/unlink")
+async def unlink(request: Request, sp_id: int, session: AsyncSession = Depends(get_session)):
+    """Отвязать ошибочно сопоставленный товар источника: он уйдёт в «Несопоставленные»."""
+    sp = await session.get(SourceProduct, sp_id)
+    if sp:
+        sp.product_id, sp.match_locked = None, True
+        await session.commit()
+    return back(request, "/admin/unmatched")
+

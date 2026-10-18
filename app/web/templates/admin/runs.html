@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Журнал запусков{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)"><main>
+  {% set active = "runs" %}{% include "admin/_nav.html" %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>Источник</th><th>Статус</th><th>Запуск</th><th>Начат</th><th>Длительность</th><th class="num">Категорий</th><th class="num">Товаров</th><th>Ошибки</th></tr></thead>
+    <tbody>
+    {% for run, title in rows %}
+    <tr>
+      <td>{{ run.id }}</td><td>{{ title }}</td><td><span class="badge {{ run.status }}">{{ run.status }}</span></td>
+      <td>{{ run.trigger }}</td>
+      <td>{{ run.started_at|localdt or "—" }}</td>
+      <td>{% if run.started_at and run.finished_at %}{{ (run.finished_at - run.started_at).total_seconds()|round|int }} с{% endif %}</td>
+      <td class="num">{{ run.categories_found }}</td><td class="num">{{ run.items_found }}</td>
+      <td>{% if run.error_log %}<details><summary>{{ run.errors_count }}</summary><pre>{{ run.error_log }}</pre></details>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="9" class="empty">Запусков ещё не было</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</main></div>
+{% endblock %}

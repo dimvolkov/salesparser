@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Сравнение цен{% endblock %} · SalesParser</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="/">SalesParser</a>
+  <nav>
+    <a href="/">Каталог</a>
+    <a href="/admin">Админка</a>
+  </nav>
+  <div class="meta">{% block meta %}{% endblock %}</div>
+</header>
+{% block body %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

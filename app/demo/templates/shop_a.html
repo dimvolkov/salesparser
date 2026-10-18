@@ -1,0 +1,21 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>{{ data.title }}</title></head><body>
+<header><h1>{{ data.title }}</h1>
+<nav class="catalog"><ul>{% for slug, name, parent, key in data.tree if parent is none %}
+  <li><a class="cat" href="/demo/a/c/{{ slug }}">{{ name }}</a></li>{% endfor %}</ul></nav></header>
+{% if view == "category" %}
+<h2>{{ node[1] }}</h2>
+{% if children %}<ul class="subcats">{% for c in children %}<li><a href="/demo/a/c/{{ c[0] }}">{{ c[1] }}</a></li>{% endfor %}</ul>{% endif %}
+<div class="products">
+{% for i in items %}
+  <div class="product-card" data-ean="{{ i.ean }}">
+    <a class="title" href="/demo/a/p/{{ i.p.id }}">{{ i.p.name }}</a>
+    <span class="brand">{{ i.p.brand }}</span>
+    <span class="sku">Арт.: {{ i.p.sku }}</span>
+    <div class="price">{{ i.price }}</div>{% if i.old %}<s class="old-price">{{ i.old }}</s>{% endif %}
+    <span class="stock">{{ "В наличии" if i.in_stock else "Нет в наличии" }}</span>
+  </div>
+{% endfor %}
+</div>
+{% if page < pages %}<a class="next" href="?page={{ page + 1 }}">Следующая →</a>{% endif %}
+{% elif view == "product" %}<h2>{{ item.p.name }}</h2><div class="price">{{ item.price }}</div>{% endif %}
+</body></html>

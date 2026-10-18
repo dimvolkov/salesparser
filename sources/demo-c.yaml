@@ -1,0 +1,21 @@
+# Демо-источник: плоский каталог с собственными названиями категорий (часть нужно
+# сопоставить вручную в админке), только артикул в «грязном» формате, цена "12.990,00 ₽",
+# наличие — по остатку.
+demo: true
+name: demo-c
+title: МегаДом (демо)
+base_url: ${DEMO_BASE_URL:-http://localhost:8000}/demo/c/
+config:
+  delay: 0.1
+  categories:
+    link: ".top-menu a"
+  listing:
+    item: "tr.row"
+    fields:
+      url: "td.name a::attr(href)"
+      name: "td.name a"
+      sku: "td.code"
+      price: "td.price"
+      in_stock: "td.qty"
+    next_page: "a.pg-next::attr(href)"
+  in_stock_pattern: "^[1-9]"

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }}{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)">
+<main>
+  <div class="crumbs"><a href="/">Каталог</a>{% for c in crumbs %} / <a href="/?cat={{ c.id }}">{{ c.name }}</a>{% endfor %}</div>
+  <h1>{{ product.name }}</h1>
+  <div class="sub">{{ product|product_meta }}</div>
+
+  {% if row %}
+  <div class="stats" style="margin-top:16px">
+    <div class="stat"><div class="v">{{ row.min_price|money }} ₽</div><div class="l">минимальная цена</div></div>
+    <div class="stat"><div class="v">{{ row.max_price|money }} ₽</div><div class="l">максимальная цена</div></div>
+    <div class="stat"><div class="v">{{ row.spread or 0 }}%</div><div class="l">разброс</div></div>
+    <div class="stat"><div class="v">{{ row.sources_count }}</div><div class="l">источников</div></div>
+  </div>
+  <div class="table-wrap" style="margin-bottom:16px">
+    <table>
+      <thead><tr><th>Источник</th><th class="num">Цена</th><th class="num">Старая цена</th><th class="num">К минимуму</th><th class="num">Изменение</th><th>Наличие</th>{% if is_admin %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for s in sources %}{% set o = row.offers.get(s.id) %}
+      <tr>
+        <td>{% if o %}<a href="{{ o.url }}" target="_blank" rel="noopener">{{ s.title }}</a>{% else %}{{ s.title }}{% endif %}</td>
+        {% if o %}
+        <td class="price {{ o.css }}">{{ o.price|money }}</td>
+        <td class="num">{% if o.old_price %}<span class="old">{{ o.old_price|money }}</span>{% endif %}</td>
+        <td class="num">{% if o.in_stock and row.min_price and o.price > row.min_price %}+{{ ((o.price - row.min_price) / row.min_price * 100)|round(1) }}%{% endif %}</td>
+        <td class="num">{% if o.delta %}<span class="{{ 'up' if o.delta > 0 else 'down' }}">{{ o.delta|signed }}</span>{% endif %}</td>
+        <td>{{ "в наличии" if o.in_stock else "нет" }}</td>
+        {% if is_admin %}<td><form class="inline" method="post" action="/admin/source-products/{{ o.sp_id }}/unlink"
+          onsubmit="return confirm('Отвязать товар источника от этой позиции?')"><button class="btn-ghost" type="submit">Отвязать</button></form></td>{% endif %}
+        {% else %}<td class="price none" colspan="{{ 6 if is_admin else 5 }}">нет у источника</td>{% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card empty">Нет актуальных цен по этой позиции.</div>
+  {% endif %}
+
+  <div class="card">
+    <h3 style="margin-top:0">История цен за 90 дней</h3>
+    <div class="chart-box"><canvas id="history"></canvas></div>
+  </div>
+</main>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+(function () {
+  const series = {{ series|tojson }};
+  const labels = [...new Set(series.flatMap(s => s.data.map(p => p.x)))].sort();
+  const palette = ["#2f6fde", "#e8590c", "#2b8a3e", "#ae3ec9", "#c92a2a", "#1098ad", "#f08c00"];
+  const css = getComputedStyle(document.documentElement);
+  const text = css.getPropertyValue("--muted").trim(), grid = css.getPropertyValue("--border").trim();
+  new Chart(document.getElementById("history"), {
+    type: "line",
+    data: { labels, datasets: series.map((s, i) => {
+      const byDay = Object.fromEntries(s.data.map(p => [p.x, p.y]));
+      return { label: s.label, data: labels.map(d => byDay[d] ?? null), borderColor: palette[i % palette.length],
+               backgroundColor: palette[i % palette.length], spanGaps: true, tension: 0.2, pointRadius: 3 };
+    }) },
+    options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      scales: { x: { ticks: { color: text }, grid: { color: grid } },
+                y: { ticks: { color: text, callback: v => v.toLocaleString("ru-RU") + " ₽" }, grid: { color: grid } } },
+      plugins: { legend: { labels: { color: text } },
+                 tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toLocaleString("ru-RU")} ₽` } } } }
+  });
+})();
+</script>
+{% endblock %}

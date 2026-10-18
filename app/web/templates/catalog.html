@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_tree.html" import tree %}
+{% block title %}{{ current.name if current else "Единый каталог" }}{% endblock %}
+{% block meta %}{% if last_run %}Обновлено {{ last_run|localdt }}{% else %}Данных ещё нет{% endif %}{% endblock %}
+{% macro qs(f) -%}
+{%- set p = dict(cat=f.cat, q=f.q, diff="1" if f.diff else "", stock="1" if f.stock else "", sort=f.sort, page=f.page) -%}
+{%- set _ = p.update(kwargs) -%}
+?{% for k, v in p.items() if v %}{{ k }}={{ v|urlencode }}{{ "&" if not loop.last }}{% endfor %}
+{%- endmacro %}
+{% block body %}
+<div class="layout">
+  <aside class="sidebar">
+    <h3>Категории</h3>
+    <div class="tree">
+      <ul><li><a href="?" class="{{ 'active' if not f.cat }}">Все товары</a></li></ul>
+      {{ tree(roots, f) }}
+      <ul><li><a href="?cat=none" class="{{ 'active' if f.cat == 'none' }}">Без категории</a></li></ul>
+    </div>
+  </aside>
+  <main>
+    {% if crumbs|length > 1 %}<div class="crumbs">{% for c in crumbs[:-1] %}<a href="?cat={{ c.id }}">{{ c.name }}</a> / {% endfor %}</div>{% endif %}
+    <h1>{{ current.name if current else ("Без категории" if f.cat == "none" else "Единый каталог") }}</h1>
+    <div class="sub">{{ total }} позиций · сравнение по {{ sources|length }} источникам</div>
+
+    <div class="chips">
+      {% for s in sources %}{% set sm = summary.get(s.id, {}) %}
+      <div class="chip"><b>{{ s.title }}{% if s.is_master %} ★{% endif %}</b>
+        <span>{{ sm.products or 0 }} позиций · дешевле всех в {{ sm.cheapest or 0 }}</span></div>
+      {% endfor %}
+    </div>
+
+    <form class="filters" method="get">
+      <input type="hidden" name="cat" value="{{ f.cat }}">
+      <input type="search" name="q" value="{{ f.q }}" placeholder="Название, бренд, EAN или артикул">
+      <select name="sort">
+        {% for key, label in [("name","По названию"),("price","Сначала дешёвые"),("price_desc","Сначала дорогие"),("spread","По разбросу цен"),("sources","По числу источников")] %}
+        <option value="{{ key }}" {{ "selected" if f.sort == key }}>{{ label }}</option>{% endfor %}
+      </select>
+      <label class="check"><input type="checkbox" name="diff" value="1" {{ "checked" if f.diff }}> только с разницей цен</label>
+      <label class="check"><input type="checkbox" name="stock" value="1" {{ "checked" if f.stock }}> только в наличии</label>
+      <button type="submit">Показать</button>
+      <a class="btn btn-ghost" href="/export.csv{{ qs(f, page='') }}">CSV</a>
+    </form>
+
+    <div class="legend">
+      <span><i style="background:var(--min-bg)"></i>минимальная цена</span>
+      <span><i style="background:var(--max-bg)"></i>максимальная цена</span>
+      <span><i></i><s>нет в наличии</s> — не участвует в сравнении</span>
+      <span>— товара нет у источника</span>
+    </div>
+
+    {% if rows %}
+    <div class="table-wrap">
+    <table class="catalog">
+      <thead><tr>
+        <th class="name">Товар</th>
+        {% for s in sources %}<th class="num">{{ s.title }}</th>{% endfor %}
+        <th class="num">Мин.</th><th class="num">Разброс</th><th class="num">Δ мин.</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="name"><a href="/product/{{ r.id }}">{{ r.name }}</a>
+          <div class="sub">{{ r|product_meta }}</div></td>
+        {% for s in sources %}{% set o = r.offers.get(s.id) %}
+          {% if o %}
+          <td class="price {{ o.css }}" title="{{ 'Нет в наличии' if not o.in_stock else '' }}">
+            <a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.price|money }}</a>
+            {% if o.old_price %}<div class="old">{{ o.old_price|money }}</div>{% endif %}
+            {% if o.delta %}<div class="{{ 'up' if o.delta > 0 else 'down' }}">{{ "▲" if o.delta > 0 else "▼" }} {{ o.delta|signed }}</div>{% endif %}
+          </td>
+          {% else %}<td class="price none">—</td>{% endif %}
+        {% endfor %}
+        <td class="num"><b>{{ r.min_price|money }}</b></td>
+        <td class="num">{% if r.spread %}{{ r.spread }}%{% endif %}</td>
+        <td class="num">{% if r.min_delta %}<span class="{{ 'up' if r.min_delta > 0 else 'down' }}">{{ r.min_delta|signed }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if pages > 1 %}
+    <div class="pager">
+      {% for n in range(1, pages + 1) %}
+        {% if n == f.page %}<span class="cur">{{ n }}</span>{% else %}<a href="{{ qs(f, page=n) }}">{{ n }}</a>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="table-wrap empty">Ничего не найдено. Если сбор ещё не запускался — запустите его в <a href="/admin">админке</a>.</div>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

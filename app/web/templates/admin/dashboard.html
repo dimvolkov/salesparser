@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Админка{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)"><main>
+  {% set active = "dash" %}{% include "admin/_nav.html" %}
+  <div class="stats">
+    <div class="stat"><div class="v">{{ sources|length }}</div><div class="l">источников</div></div>
+    <div class="stat"><div class="v">{{ products }}</div><div class="l">позиций в едином каталоге</div></div>
+    <div class="stat"><div class="v"><a href="/admin/unmatched">{{ unmatched }}</a></div><div class="l">несопоставленных товаров</div></div>
+    <div class="stat"><div class="v">{{ settings.scrape_cron }}</div><div class="l">расписание ({{ settings.timezone }})</div></div>
+  </div>
+  <div class="filters">
+    <h1 style="margin:0">Источники</h1>
+    <form method="post" action="/admin/run-all" style="margin-left:auto"><button type="submit">Запустить сбор по всем</button></form>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Источник</th><th>Адаптер</th><th class="num">Товаров</th><th class="num">Категорий без маппинга</th><th>Последний запуск</th><th></th></tr></thead>
+    <tbody>
+    {% for s in sources %}{% set r = last_runs[s.id] %}
+    <tr>
+      <td><b>{{ s.title }}</b>{% if s.is_master %} <span class="badge">ведущий</span>{% endif %}{% if not s.enabled %} <span class="badge failed">выключен</span>{% endif %}
+        <div class="sub"><a href="{{ s.base_url }}" target="_blank" rel="noopener">{{ s.base_url }}</a></div></td>
+      <td>{{ s.adapter }}</td>
+      <td class="num">{{ counts.get(s.id, 0) }}</td>
+      <td class="num">{% if s.is_master %}—{% elif unmapped.get(s.id) %}<a href="/admin/categories?source={{ s.id }}&only_unmapped=true">{{ unmapped[s.id] }}</a>{% else %}0{% endif %}</td>
+      <td>{% if r %}<span class="badge {{ r.status }}">{{ r.status }}</span>
+        <span class="sub">{{ (r.finished_at or r.started_at or r.created_at)|localdt }} · товаров {{ r.items_found }}{% if r.errors_count %} · ошибок {{ r.errors_count }}{% endif %}</span>
+        {% else %}<span class="sub">не запускался</span>{% endif %}</td>
+      <td style="white-space:nowrap">
+        <form class="inline" method="post" action="/admin/sources/{{ s.id }}/run"><button type="submit" {{ "disabled" if not s.enabled }}>Запустить</button></form>
+        <form class="inline" method="post" action="/admin/sources/{{ s.id }}/toggle"><button class="btn-ghost" type="submit">{{ "Выключить" if s.enabled else "Включить" }}</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="sub">Источники описываются файлами <code>sources/*.yaml</code> и подхватываются при старте. Ручной запуск ставится в очередь — worker забирает её в течение {{ settings.queue_poll_seconds }} с.</p>
+</main></div>
+{% endblock %}

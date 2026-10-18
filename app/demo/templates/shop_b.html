@@ -1,0 +1,20 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>{{ data.title }}</title>
+{% if view == "product" %}<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Product","name":{{ item.p.name|tojson }}{% if item.p.sku %},"sku":{{ item.p.sku|tojson }}{% endif %}{% if item.ean %},"gtin13":"{{ item.ean }}"{% endif %}{% if item.p.brand %},"brand":{"@type":"Brand","name":{{ item.p.brand|tojson }}}{% endif %},
+ "offers":{"@type":"Offer","price":"{{ item.price_raw }}","priceCurrency":"RUB","availability":"https://schema.org/{{ 'InStock' if item.in_stock else 'OutOfStock' }}"}}
+</script>{% endif %}</head><body>
+<aside id="menu">{% for slug, name, parent, key in data.tree if parent is none %}<a class="menu-item" href="/demo/b/c/{{ slug }}">{{ name }}</a>{% endfor %}</aside>
+<main>
+{% if view == "category" %}
+<h1>{{ node[1] }}</h1>
+{% if children %}<div class="children">{% for c in children %}<a href="/demo/b/c/{{ c[0] }}">{{ c[1] }}</a>{% endfor %}</div>{% endif %}
+<ul class="list">
+{% for i in items %}
+  <li class="item"><h3><a href="/demo/b/p/{{ i.p.id }}">{{ i.p.name }}</a></h3>
+    <p class="cost"><span class="value">{{ i.price }}</span> руб.</p>
+    <p class="avail">{{ "Есть на складе" if i.in_stock else "Нет в наличии" }}</p></li>
+{% endfor %}
+</ul>
+<div class="pager">{% if page < pages %}<a rel="next" href="/demo/b/c/{{ node[0] }}?page={{ page + 1 }}">»</a>{% endif %}</div>
+{% elif view == "product" %}<h1>{{ item.p.name }}</h1><p class="cost">{{ item.price }} руб.</p>{% endif %}
+</main></body></html>

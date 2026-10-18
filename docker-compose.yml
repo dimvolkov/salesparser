@@ -1,0 +1,80 @@
+# Стек для Dokploy (Compose). Traefik находит api через внешнюю сеть dokploy-network и лейблы ниже.
+x-env: &env
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-salesparser}:${POSTGRES_PASSWORD:-salesparser}@db:5432/${POSTGRES_DB:-salesparser}
+  ADMIN_TOKEN: ${ADMIN_TOKEN:?задайте ADMIN_TOKEN}
+  TIMEZONE: ${TIMEZONE:-Europe/Moscow}
+  SCRAPE_CRON: ${SCRAPE_CRON:-0 3 * * *}
+  DEMO_ENABLED: ${DEMO_ENABLED:-true}
+  DEMO_BASE_URL: http://api:8000
+  STALE_DAYS: ${STALE_DAYS:-2}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-salesparser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-salesparser}
+      POSTGRES_DB: ${POSTGRES_DB:-salesparser}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      args:
+        WITH_PLAYWRIGHT: "0"
+    restart: unless-stopped
+    command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"
+    environment: *env
+    depends_on:
+      db:
+        condition: service_healthy
+    # Без wget/curl: в slim-образе их нет, а Unhealthy-контейнер Traefik не маршрутизирует
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-true}
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.salesparser.rule=Host(`${DOMAIN:-salesparser.example.com}`)
+      - traefik.http.routers.salesparser.entrypoints=websecure
+      - traefik.http.routers.salesparser.tls.certresolver=letsencrypt
+      - traefik.http.routers.salesparser-http.rule=Host(`${DOMAIN:-salesparser.example.com}`)
+      - traefik.http.routers.salesparser-http.entrypoints=web
+      - traefik.http.routers.salesparser-http.middlewares=salesparser-https
+      - traefik.http.middlewares.salesparser-https.redirectscheme.scheme=https
+      - traefik.http.services.salesparser.loadbalancer.server.port=8000
+
+  worker:
+    build:
+      context: .
+      args:
+        WITH_PLAYWRIGHT: ${WITH_PLAYWRIGHT:-0}
+    restart: unless-stopped
+    command: python -m app.worker
+    environment:
+      <<: *env
+      RUN_ON_START: ${RUN_ON_START:-false}
+      MAX_PARALLEL_SOURCES: ${MAX_PARALLEL_SOURCES:-4}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+
+networks:
+  dokploy-network:
+    external: true

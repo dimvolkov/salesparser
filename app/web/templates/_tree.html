@@ -1,0 +1,8 @@
+{% macro tree(nodes, f) %}
+<ul>
+{% for n in nodes %}
+  <li><a href="?cat={{ n.id }}" class="{{ 'active' if f.cat == n.id|string }}">{{ n.name }}</a>
+  {% if n.children %}{{ tree(n.children, f) }}{% endif %}</li>
+{% endfor %}
+</ul>
+{% endmacro %}

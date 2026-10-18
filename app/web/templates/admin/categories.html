@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Маппинг категорий{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)"><main>
+  {% set active = "cats" %}{% include "admin/_nav.html" %}
+  <h1>Маппинг категорий</h1>
+  <p class="sub">Единое дерево строится по ведущему источнику. Категории остальных источников с совпадающим названием привязываются автоматически, остальные — здесь. Ручная привязка не перезаписывается.</p>
+  {% if not current %}<div class="card empty">Нет неведущих источников.</div>{% else %}
+  <form class="filters" method="get">
+    <select name="source" onchange="this.form.submit()">
+      {% for s in sources %}<option value="{{ s.id }}" {{ "selected" if s.id == current.id }}>{{ s.title }}</option>{% endfor %}
+    </select>
+    <label class="check"><input type="checkbox" name="only_unmapped" value="true" {{ "checked" if only_unmapped }} onchange="this.form.submit()"> только без привязки</label>
+  </form>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Категория источника</th><th>Категория единого каталога</th><th></th></tr></thead>
+    <tbody>
+    {% for sc in rows %}
+    <tr>
+      <td>{% if sc.parent_id and by_id.get(sc.parent_id) %}<span class="sub">{{ by_id[sc.parent_id].name }} / </span>{% endif %}
+        <a href="{{ sc.url }}" target="_blank" rel="noopener">{{ sc.name }}</a></td>
+      <td>
+        <form class="inline" method="post" action="/admin/categories/{{ sc.id }}">
+          <select name="category_id">
+            <option value="">— не привязана —</option>
+            {% for depth, n in options %}<option value="{{ n.id }}" {{ "selected" if sc.category_id == n.id }}>{{ "   " * depth }}{{ n.name }}</option>{% endfor %}
+          </select>
+          <button type="submit">Сохранить</button>
+        </form>
+      </td>
+      <td>{% if sc.mapping_locked %}<span class="badge">вручную</span>{% elif sc.category_id %}<span class="badge ok">авто</span>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="3" class="empty">Нет категорий</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</main></div>
+{% endblock %}

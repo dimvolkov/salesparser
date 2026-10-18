@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Несопоставленные товары{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)"><main>
+  {% set active = "unmatched" %}{% include "admin/_nav.html" %}
+  <h1>Несопоставленные товары</h1>
+  <p class="sub">Товары, у которых источник не отдал ни EAN, ни артикул, или отвязанные вручную. Привяжите к существующей позиции или создайте новую.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Товар источника</th><th>Похожие позиции</th><th>Привязать</th></tr></thead>
+    <tbody>
+    {% for sp, title in rows %}
+    <tr>
+      <td><a href="{{ sp.url }}" target="_blank" rel="noopener">{{ sp.name }}</a>
+        <div class="sub">{{ title }}{% if sp.sku_raw %} · арт. {{ sp.sku_raw }}{% endif %}{% if sp.ean %} · EAN {{ sp.ean }}{% endif %}</div></td>
+      <td>{% for c in candidates[sp.id] %}
+        <form class="inline" method="post" action="/admin/unmatched/{{ sp.id }}/link">
+          <input type="hidden" name="product_id" value="{{ c.id }}">
+          <button class="btn-ghost" type="submit" title="Сходство {{ (c.score * 100)|round|int }}%">#{{ c.id }} {{ c.name }}</button>
+        </form>{% else %}<span class="sub">нет</span>{% endfor %}</td>
+      <td style="white-space:nowrap">
+        <form class="inline" method="post" action="/admin/unmatched/{{ sp.id }}/link">
+          <input type="text" name="product_id" placeholder="ID позиции" size="8" required>
+          <button type="submit">Привязать</button>
+        </form>
+        <form class="inline" method="post" action="/admin/unmatched/{{ sp.id }}/create"><button class="btn-ghost" type="submit">Новая позиция</button></form>
+      </td>
+    </tr>
+    {% else %}<tr><td colspan="3" class="empty">Все товары сопоставлены</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</main></div>
+{% endblock %}

@@ -1,0 +1,26 @@
+# Демо-источник (ведущий): дерево категорий единого каталога строится по нему.
+# EAN — в data-атрибуте карточки листинга, артикул — в тексте.
+demo: true
+name: demo-a
+title: ТехноМаркет (демо)
+base_url: ${DEMO_BASE_URL:-http://localhost:8000}/demo/a/
+is_master: true
+config:
+  delay: 0.1
+  categories:
+    link: "nav.catalog a.cat"
+    sub_link: "ul.subcats a"
+  listing:
+    item: ".product-card"
+    fields:
+      url: "a.title::attr(href)"
+      name: "a.title"
+      brand: ".brand"
+      price: ".price"
+      old_price: ".old-price"
+      ean: "xpath:@data-ean"
+      sku: {sel: ".sku", re: "Арт\\.:\\s*(.+)"}
+      in_stock: ".stock"
+    next_page: "a.next::attr(href)"
+  in_stock_pattern: "в наличии"
+  out_of_stock_pattern: "нет в наличии"

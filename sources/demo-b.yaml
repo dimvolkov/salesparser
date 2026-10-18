@@ -1,0 +1,24 @@
+# Демо-источник: в листинге только название и цена, EAN/артикул/бренд берутся
+# из schema.org JSON-LD на карточке товара (detail.enabled).
+demo: true
+name: demo-b
+title: Электрон (демо)
+base_url: ${DEMO_BASE_URL:-http://localhost:8000}/demo/b/
+config:
+  delay: 0.1
+  categories:
+    link: "#menu a.menu-item"
+    sub_link: ".children a"
+  listing:
+    item: "li.item"
+    fields:
+      url: "h3 a::attr(href)"
+      name: "h3 a"
+      price: ".cost .value"
+      in_stock: ".avail"
+    next_page: "a[rel=next]::attr(href)"
+  detail:
+    enabled: true
+    jsonld: true
+  in_stock_pattern: "есть|в наличии"
+  out_of_stock_pattern: "нет в наличии"
