@@ -13,6 +13,21 @@ class Base(DeclarativeBase):
     pass
 
 
+class Proxy(Base):
+    """Прокси, заведённый в админке; выбирается для источника на странице «Источники»."""
+    __tablename__ = "proxy"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    # http(s)://user:pass@host:port, socks5://..., socks5h://... или "${ПЕРЕМЕННАЯ}"
+    url: Mapped[str] = mapped_column(String(1000))
+    note: Mapped[str] = mapped_column(String(300), default="")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_ok: Mapped[bool | None] = mapped_column(Boolean)
+    check_result: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Source(Base):
     """Сайт-источник. Конфигурация приходит из sources/*.yaml."""
     __tablename__ = "source"
@@ -26,6 +41,8 @@ class Source(Base):
     is_master: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # Выбирается в админке и важнее config.proxy из YAML; синхронизация YAML его не трогает
+    proxy_id: Mapped[int | None] = mapped_column(ForeignKey("proxy.id", ondelete="SET NULL"))
 
 
 class Category(Base):

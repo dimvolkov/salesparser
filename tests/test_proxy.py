@@ -1,10 +1,11 @@
 import asyncio
 import base64
 
+import httpx
 import pytest
 
 from app.scraping.http import Fetcher
-from app.scraping.proxy import mask, playwright_proxy, resolve_proxy
+from app.scraping.proxy import mask, playwright_proxy, probe, resolve_proxy
 from app.scraping.registry import build_adapter
 
 CONFIG = {"categories": {"link": "a"}, "listing": {"item": ".p", "fields": {}}}
@@ -74,3 +75,11 @@ async def test_requests_go_through_proxy():
     headers = dict(line.split(": ", 1) for line in lines if line)
     headers = {k.lower(): v for k, v in headers.items()}
     assert headers["proxy-authorization"] == "Basic " + base64.b64encode(b"user:secret").decode()
+
+
+async def test_probe_parses_ipinfo():
+    def handler(request):
+        assert request.url.host == "ipinfo.io"
+        return httpx.Response(200, json={"ip": "1.2.3.4", "country": "RU", "org": "AS12389 Rostelecom"})
+    result = await probe("http://10.0.0.1:3128", transport=httpx.MockTransport(handler))
+    assert result == "RU · 1.2.3.4 · AS12389 Rostelecom"

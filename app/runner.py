@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog import automap_categories, refresh_products, sync_master_categories
 from app.config import settings
 from app.db import SessionLocal
 from app.matching import match_products
-from app.models import PriceSnapshot, ScrapeRun, Source, SourceCategory, SourceProduct
+from app.models import PriceSnapshot, Proxy, ScrapeRun, Source, SourceCategory, SourceProduct
 from app.normalize import normalize_ean, normalize_sku
 from app.scraping.base import CategoryItem, ProductItem
 from app.scraping.proxy import mask
@@ -75,10 +76,21 @@ async def post_process() -> None:
     log.info("Матчинг: сопоставлено %d, без ключа %d", matched, unmatched)
 
 
+async def adapter_config(session: AsyncSession, source: Source) -> dict:
+    """Config источника для адаптера: прокси, выбранный в админке, заменяет config.proxy из YAML."""
+    config = dict(source.config)
+    if source.proxy_id:
+        proxy = await session.get(Proxy, source.proxy_id)
+        if proxy:
+            config["proxy"] = proxy.url
+    return config
+
+
 async def run_source(source_id: int, run_id: int | None = None, trigger: str = "schedule",
                      adapter_kwargs: dict | None = None, match: bool = True) -> ScrapeRun:
     async with SessionLocal() as session:
         source = await session.get(Source, source_id)
+        config = await adapter_config(session, source)
         run = await session.get(ScrapeRun, run_id) if run_id else None
         if run is None:
             run = ScrapeRun(source_id=source_id, trigger=trigger)
@@ -93,7 +105,7 @@ async def run_source(source_id: int, run_id: int | None = None, trigger: str = "
     adapter = None
     try:
         # Внутри try: ошибка конфига (селекторы, прокси) должна попасть в журнал, а не оставить запуск в running
-        adapter = build_adapter(source.name, source.adapter, source.base_url, source.config, **(adapter_kwargs or {}))
+        adapter = build_adapter(source.name, source.adapter, source.base_url, config, **(adapter_kwargs or {}))
         if getattr(adapter, "proxy", None):
             log.info("%s: через прокси %s", source.name, mask(adapter.proxy))
         categories = await adapter.categories()

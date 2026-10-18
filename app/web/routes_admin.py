@@ -8,8 +8,9 @@ from app.auth import Principal
 from app.catalog import refresh_products
 from app.config import settings
 from app.db import get_session
-from app.models import Product, ScrapeRun, Source, SourceCategory, SourceProduct, User
+from app.models import Product, Proxy, ScrapeRun, Source, SourceCategory, SourceProduct, User
 from app.normalize import normalize_ean, normalize_sku
+from app.scraping.proxy import mask, probe, resolve_proxy
 from app.web.common import category_tree, flat_tree, load_sources, templates
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(auth.manager)])
@@ -35,9 +36,10 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     unmatched = await session.scalar(select(func.count()).select_from(SourceProduct)
                                      .where(SourceProduct.product_id.is_(None)))
     products = await session.scalar(select(func.count()).select_from(Product))
+    proxies = (await session.scalars(select(Proxy).order_by(Proxy.name))).all()
     return templates.TemplateResponse(request, "admin/dashboard.html", {
         "sources": sources, "last_runs": last_runs, "counts": counts, "unmapped": unmapped,
-        "unmatched": unmatched, "products": products, "settings": settings,
+        "unmatched": unmatched, "products": products, "settings": settings, "proxies": proxies,
     })
 
 
@@ -70,6 +72,100 @@ async def toggle(request: Request, source_id: int, session: AsyncSession = Depen
         source.enabled = not source.enabled
         await session.commit()
     return back(request, "/admin")
+
+
+@router.post("/sources/{source_id}/proxy")
+async def set_source_proxy(request: Request, source_id: int, proxy_id: str = Form(""),
+                           session: AsyncSession = Depends(get_session)):
+    source = await session.get(Source, source_id)
+    if source is None:
+        raise HTTPException(404)
+    if proxy_id.isdigit() and await session.get(Proxy, int(proxy_id)) is None:
+        raise HTTPException(400, "Прокси не найден")
+    source.proxy_id = int(proxy_id) if proxy_id.isdigit() else None
+    await session.commit()
+    return back(request, "/admin")
+
+
+# ── Прокси ─────────────────────────────────────────────────────────────
+
+@router.get("/proxies", response_class=HTMLResponse)
+async def proxies(request: Request, error: str = "", session: AsyncSession = Depends(get_session)):
+    rows = (await session.scalars(select(Proxy).order_by(Proxy.name))).all()
+    used = {}
+    for source in await load_sources(session, enabled_only=False):
+        if source.proxy_id:
+            used.setdefault(source.proxy_id, []).append(source.title)
+    return templates.TemplateResponse(request, "admin/proxies.html", {
+        "rows": rows, "used": used, "error": error, "mask": mask})
+
+
+def _valid_proxy_url(url: str) -> bool:
+    try:
+        resolve_proxy(url)
+    except ValueError:
+        return False
+    # "${ПЕРЕМЕННАЯ}" допустима, даже если в этом процессе она не задана
+    return bool(url) and (url.startswith("${") or "://" in url)
+
+
+@router.post("/proxies")
+async def create_proxy(name: str = Form(""), url: str = Form(""), note: str = Form(""),
+                       session: AsyncSession = Depends(get_session)):
+    name, url = name.strip(), url.strip()
+    if not name or not _valid_proxy_url(url):
+        return RedirectResponse("/admin/proxies?error=invalid", status_code=303)
+    if await session.scalar(select(Proxy.id).where(Proxy.name == name)):
+        return RedirectResponse("/admin/proxies?error=exists", status_code=303)
+    session.add(Proxy(name=name, url=url, note=note.strip()))
+    await session.commit()
+    return RedirectResponse("/admin/proxies", status_code=303)
+
+
+@router.post("/proxies/{proxy_id}")
+async def update_proxy(proxy_id: int, name: str = Form(""), url: str = Form(""), note: str = Form(""),
+                       session: AsyncSession = Depends(get_session)):
+    proxy = await session.get(Proxy, proxy_id)
+    if proxy is None:
+        raise HTTPException(404)
+    name, url = name.strip(), url.strip()
+    if not name or (url and not _valid_proxy_url(url)):
+        return RedirectResponse("/admin/proxies?error=invalid", status_code=303)
+    if await session.scalar(select(Proxy.id).where(Proxy.name == name, Proxy.id != proxy_id)):
+        return RedirectResponse("/admin/proxies?error=exists", status_code=303)
+    # Пустой адрес — оставить прежний: в форме он показывается без пароля
+    if url and url != proxy.url:
+        proxy.url, proxy.checked_at, proxy.check_ok, proxy.check_result = url, None, None, None
+    proxy.name, proxy.note = name, note.strip()
+    await session.commit()
+    return RedirectResponse("/admin/proxies", status_code=303)
+
+
+@router.post("/proxies/{proxy_id}/delete")
+async def delete_proxy(proxy_id: int, session: AsyncSession = Depends(get_session)):
+    proxy = await session.get(Proxy, proxy_id)
+    if proxy:
+        # Источники с этим прокси переходят на config.proxy из YAML (или напрямую)
+        await session.delete(proxy)
+        await session.commit()
+    return RedirectResponse("/admin/proxies", status_code=303)
+
+
+@router.post("/proxies/{proxy_id}/check")
+async def check_proxy(proxy_id: int, session: AsyncSession = Depends(get_session)):
+    proxy = await session.get(Proxy, proxy_id)
+    if proxy is None:
+        raise HTTPException(404)
+    try:
+        url = resolve_proxy(proxy.url)
+        if url is None:
+            raise ValueError("переменная окружения не задана")
+        proxy.check_result, proxy.check_ok = await probe(url), True
+    except Exception as e:
+        proxy.check_result, proxy.check_ok = (f"{type(e).__name__}: {e}" if str(e) else type(e).__name__)[:500], False
+    proxy.checked_at = func.now()
+    await session.commit()
+    return RedirectResponse("/admin/proxies", status_code=303)
 
 
 @router.get("/runs", response_class=HTMLResponse)

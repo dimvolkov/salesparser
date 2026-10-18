@@ -3,5 +3,6 @@
   <a class="btn {{ '' if active == 'cats' else 'btn-ghost' }}" href="/admin/categories">Маппинг категорий</a>
   <a class="btn {{ '' if active == 'unmatched' else 'btn-ghost' }}" href="/admin/unmatched">Несопоставленные</a>
   <a class="btn {{ '' if active == 'runs' else 'btn-ghost' }}" href="/admin/runs">Журнал запусков</a>
+  <a class="btn {{ '' if active == 'proxies' else 'btn-ghost' }}" href="/admin/proxies">Прокси</a>
   {% if request.state.user.is_admin %}<a class="btn {{ '' if active == 'users' else 'btn-ghost' }}" href="/admin/users">Пользователи</a>{% endif %}
 </div>

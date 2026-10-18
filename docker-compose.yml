@@ -9,6 +9,8 @@ x-env: &env
   DEMO_ENABLED: ${DEMO_ENABLED:-true}
   DEMO_BASE_URL: http://api:8000
   STALE_DAYS: ${STALE_DAYS:-2}
+  # Прокси, заданный как "${SCRAPE_PROXY}" в sources/*.yaml или в /admin/proxies; другие имена добавляйте сюда же
+  SCRAPE_PROXY: ${SCRAPE_PROXY:-}
 
 services:
   db:
@@ -73,8 +75,6 @@ services:
       <<: *env
       RUN_ON_START: ${RUN_ON_START:-false}
       MAX_PARALLEL_SOURCES: ${MAX_PARALLEL_SOURCES:-4}
-      # Прокси для источников с `proxy: "${SCRAPE_PROXY}"` в sources/*.yaml; другие имена добавляйте сюда же
-      SCRAPE_PROXY: ${SCRAPE_PROXY:-}
     depends_on:
       api:
         condition: service_healthy

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Прокси{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)"><main>
+  {% set active = "proxies" %}{% include "admin/_nav.html" %}
+  <h1>Прокси</h1>
+  <p class="sub">Для сайтов, которые не пускают зарубежные и хостинговые IP. Прокси выбирается для источника на странице <a href="/admin">«Источники»</a>.
+    Адрес: <code>http://user:pass@host:port</code>, <code>socks5://…</code>, <code>socks5h://…</code> или <code>${ПЕРЕМЕННАЯ}</code> из окружения api и worker.
+    Для источников с <code>adapter: playwright</code> SOCKS5 с паролем не работает — нужен HTTP.</p>
+  {% set messages = {"invalid": "Нужны название и адрес вида http(s)://, socks5://, socks5h:// или ${ПЕРЕМЕННАЯ}",
+                     "exists": "Прокси с таким названием уже есть"} %}
+  {% if error in messages %}<div class="notice err">{{ messages[error] }}</div>{% endif %}
+  {% if rows %}
+  <div class="table-wrap" style="margin-bottom:16px">
+  <table>
+    <thead><tr><th>Название</th><th>Адрес</th><th>Заметка</th><th>Проверка</th><th>Источники</th><th></th></tr></thead>
+    <tbody>
+    {% for p in rows %}{% set f = "p" ~ p.id %}
+    <tr>
+      <td><input form="{{ f }}" type="text" name="name" value="{{ p.name }}" size="14" required></td>
+      <td><div class="sub">{{ mask(p.url) }}</div>
+        <input form="{{ f }}" type="text" name="url" placeholder="новый адрес — не менять" size="26" autocomplete="off"></td>
+      <td><input form="{{ f }}" type="text" name="note" value="{{ p.note }}" size="16"></td>
+      <td>{% if p.checked_at %}<span class="badge {{ 'ok' if p.check_ok else 'failed' }}">{{ "работает" if p.check_ok else "ошибка" }}</span>
+        <div class="sub">{{ p.check_result }}<br>{{ p.checked_at|localdt }}</div>
+        {% else %}<span class="sub">не проверялся</span>{% endif %}</td>
+      <td class="sub">{{ used.get(p.id, [])|join(", ") or "—" }}</td>
+      <td style="white-space:nowrap">
+        <form class="inline" id="{{ f }}" method="post" action="/admin/proxies/{{ p.id }}"><button type="submit">Сохранить</button></form>
+        <form class="inline" method="post" action="/admin/proxies/{{ p.id }}/check"><button class="btn-ghost" type="submit">Проверить</button></form>
+        <form class="inline" method="post" action="/admin/proxies/{{ p.id }}/delete"
+              onsubmit="return confirm('Удалить прокси?{% if used.get(p.id) %} Источники с ним пойдут напрямую или по YAML.{% endif %}')"><button class="btn-ghost" type="submit">Удалить</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="sub">«Проверить» показывает страну, IP и сеть, которые видят сайты через этот прокси (ipinfo.io). Для Ленты и подобных нужен RU и, лучше, не хостинговая сеть.</p>
+  {% endif %}
+  <h3>Новый прокси</h3>
+  <form class="filters" method="post" action="/admin/proxies">
+    <input type="text" name="name" placeholder="Название, например RU-1" required>
+    <input type="text" name="url" placeholder="http://user:pass@host:port" size="32" required autocomplete="off">
+    <input type="text" name="note" placeholder="Заметка">
+    <button type="submit">Добавить</button>
+  </form>
+</main></div>
+{% endblock %}

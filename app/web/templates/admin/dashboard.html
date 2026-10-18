@@ -15,13 +15,18 @@
   </div>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Источник</th><th>Адаптер</th><th class="num">Товаров</th><th class="num">Категорий без маппинга</th><th>Последний запуск</th><th></th></tr></thead>
+    <thead><tr><th>Источник</th><th>Адаптер</th><th>Прокси</th><th class="num">Товаров</th><th class="num">Категорий без маппинга</th><th>Последний запуск</th><th></th></tr></thead>
     <tbody>
     {% for s in sources %}{% set r = last_runs[s.id] %}
     <tr>
       <td><b>{{ s.title }}</b>{% if s.is_master %} <span class="badge">ведущий</span>{% endif %}{% if not s.enabled %} <span class="badge failed">выключен</span>{% endif %}
         <div class="sub"><a href="{{ s.base_url }}" target="_blank" rel="noopener">{{ s.base_url }}</a></div></td>
       <td>{{ s.adapter }}</td>
+      <td><form method="post" action="/admin/sources/{{ s.id }}/proxy">
+        <select name="proxy_id" onchange="this.form.submit()">
+          <option value="">{{ "из YAML" if s.config.get("proxy") else "напрямую" }}</option>
+          {% for p in proxies %}<option value="{{ p.id }}" {{ "selected" if s.proxy_id == p.id }}>{{ p.name }}</option>{% endfor %}
+        </select><noscript><button type="submit">OK</button></noscript></form></td>
       <td class="num">{{ counts.get(s.id, 0) }}</td>
       <td class="num">{% if s.is_master %}—{% elif unmapped.get(s.id) %}<a href="/admin/categories?source={{ s.id }}&only_unmapped=true">{{ unmapped[s.id] }}</a>{% else %}0{% endif %}</td>
       <td>{% if r %}<span class="badge {{ r.status }}">{{ r.status }}</span>
@@ -36,6 +41,6 @@
     </tbody>
   </table>
   </div>
-  <p class="sub">Источники описываются файлами <code>sources/*.yaml</code> и подхватываются при старте. Ручной запуск ставится в очередь — worker забирает её в течение {{ settings.queue_poll_seconds }} с.</p>
+  <p class="sub">Источники описываются файлами <code>sources/*.yaml</code> и подхватываются при старте. Прокси заводятся на странице <a href="/admin/proxies">«Прокси»</a> и применяются со следующего запуска. Ручной запуск ставится в очередь — worker забирает её в течение {{ settings.queue_poll_seconds }} с.</p>
 </main></div>
 {% endblock %}

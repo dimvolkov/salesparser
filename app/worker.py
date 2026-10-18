@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.db import SessionLocal
 from app.models import ScrapeRun, Source
-from app.runner import enabled_source_ids, post_process, run_source
+from app.runner import adapter_config, enabled_source_ids, post_process, run_source
 from app.scraping.proxy import mask
 from app.scraping.registry import build_adapter
 from app.sources import sync_sources
@@ -86,9 +86,10 @@ async def check_source(name: str, url: str | None) -> None:
     async with SessionLocal() as session:
         await sync_sources(session)
         source = await session.scalar(select(Source).where(Source.name == name))
-    if source is None:
-        raise SystemExit(f"Источник {name!r} не найден")
-    adapter = build_adapter(source.name, source.adapter, source.base_url, source.config)
+        if source is None:
+            raise SystemExit(f"Источник {name!r} не найден")
+        config = await adapter_config(session, source)
+    adapter = build_adapter(source.name, source.adapter, source.base_url, config)
     fetcher = getattr(adapter, "fetcher", None)
     if fetcher is None:
         raise SystemExit(f"У адаптера {source.adapter} нет fetcher — проверка не поддерживается")
