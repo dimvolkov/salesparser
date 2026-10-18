@@ -69,11 +69,17 @@ config:
 
 * Сайт рендерит каталог на JS — `adapter: playwright` (и `wait_for: ".product-card"` в `config`),
   а worker соберите с `WITH_PLAYWRIGHT=1`.
+* Сайт пускает только российские или «домашние» IP (Qrator, геоблок) — `proxy: "${SCRAPE_PROXY}"` в `config`,
+  сам адрес `http://user:pass@host:port` (или `socks5://`, `socks5h://`) — в переменной `SCRAPE_PROXY` у worker.
+  `${ИМЯ}` раскрывается при запуске обхода, так что пароль не попадает ни в git, ни в базу; если переменная пустая,
+  источник ходит напрямую. Для разных прокси у разных источников заведите свои переменные и пропишите их
+  в `environment` сервиса worker в `docker-compose.yml`. Chromium не умеет SOCKS5 с паролем — для `playwright` берите HTTP.
 * Совсем нестандартный сайт (API, бесконечная прокрутка) — класс-наследник `app.scraping.base.SourceAdapter`
   с методами `categories()` и `products(category)`, подключается как `adapter: "app.adapters.shop1:Shop1Adapter"`.
 * YAML подхватывается при старте api/worker. Флаг «включён» после первого импорта меняется в админке;
   источник, чей файл удалён, автоматически выключается.
 
+Проверить доступ (внешний IP через прокси источника и ответ сайта): `docker compose exec worker python -m app.worker check shop1`.
 Проверить конфиг без ожидания расписания: `docker compose exec worker python -m app.worker run --source shop1`,
 затем смотреть `/admin/runs`.
 

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from app.normalize import clean_text, parse_price
 from app.scraping.base import CategoryItem, ProductItem, SourceAdapter
 from app.scraping.http import Fetcher
+from app.scraping.proxy import resolve_proxy
 
 
 class FieldSpec(BaseModel):
@@ -60,6 +61,8 @@ class GenericConfig(BaseModel):
     delay: float = 1.0
     respect_robots: bool = True
     headers: dict[str, str] = {}
+    # http(s)://, socks5:// или socks5h://; секреты — через "${ИМЯ_ПЕРЕМЕННОЙ}" (см. app/scraping/proxy.py)
+    proxy: str | None = None
     leaf_only: bool = True
 
 
@@ -138,12 +141,13 @@ class GenericAdapter(SourceAdapter):
     def __init__(self, name: str, base_url: str, config: dict, transport=None):
         super().__init__(name, base_url, config)
         self.cfg = GenericConfig.model_validate(config)
+        self.proxy = resolve_proxy(self.cfg.proxy)
         self.fetcher = self.make_fetcher(transport)
         self._page_cache: dict[str, str] = {}
 
     def make_fetcher(self, transport=None):
         return Fetcher(delay=self.cfg.delay, respect_robots=self.cfg.respect_robots,
-                       headers=self.cfg.headers, transport=transport)
+                       headers=self.cfg.headers, transport=transport, proxy=self.proxy)
 
     async def fetch(self, url: str) -> Selector:
         html = self._page_cache.pop(url, None)

@@ -7,11 +7,13 @@ import time
 
 from app.config import settings
 from app.scraping.generic import GenericAdapter
+from app.scraping.proxy import playwright_proxy
 
 
 class PlaywrightFetcher:
-    def __init__(self, delay: float, wait_for: str | None, headers: dict):
+    def __init__(self, delay: float, wait_for: str | None, headers: dict, proxy: str | None = None):
         self.delay = delay
+        self.proxy = playwright_proxy(proxy) if proxy else None
         self.wait_for = wait_for
         self.headers = headers
         self._pw = self._browser = self._context = None
@@ -26,7 +28,7 @@ class PlaywrightFetcher:
         except ImportError as e:
             raise RuntimeError("Playwright не установлен: соберите образ с WITH_PLAYWRIGHT=1") from e
         self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(headless=True)
+        self._browser = await self._pw.chromium.launch(headless=True, proxy=self.proxy)
         self._context = await self._browser.new_context(
             user_agent=settings.user_agent, locale="ru-RU", extra_http_headers=self.headers)
 
@@ -55,4 +57,4 @@ class PlaywrightFetcher:
 
 class PlaywrightAdapter(GenericAdapter):
     def make_fetcher(self, transport=None):
-        return PlaywrightFetcher(self.cfg.delay, self.config.get("wait_for"), self.cfg.headers)
+        return PlaywrightFetcher(self.cfg.delay, self.config.get("wait_for"), self.cfg.headers, self.proxy)

@@ -13,6 +13,7 @@ from app.matching import match_products
 from app.models import PriceSnapshot, ScrapeRun, Source, SourceCategory, SourceProduct
 from app.normalize import normalize_ean, normalize_sku
 from app.scraping.base import CategoryItem, ProductItem
+from app.scraping.proxy import mask
 from app.scraping.registry import build_adapter
 
 log = logging.getLogger(__name__)
@@ -89,8 +90,12 @@ async def run_source(source_id: int, run_id: int | None = None, trigger: str = "
     errors: list[str] = []
     categories_found = items_found = 0
     status = "ok"
-    adapter = build_adapter(source.name, source.adapter, source.base_url, source.config, **(adapter_kwargs or {}))
+    adapter = None
     try:
+        # Внутри try: ошибка конфига (селекторы, прокси) должна попасть в журнал, а не оставить запуск в running
+        adapter = build_adapter(source.name, source.adapter, source.base_url, source.config, **(adapter_kwargs or {}))
+        if getattr(adapter, "proxy", None):
+            log.info("%s: через прокси %s", source.name, mask(adapter.proxy))
         categories = await adapter.categories()
         categories_found = len(categories)
         if not categories:
@@ -119,7 +124,8 @@ async def run_source(source_id: int, run_id: int | None = None, trigger: str = "
         errors.append(traceback.format_exc())
         log.exception("%s: обход завершился ошибкой", source.name)
     finally:
-        await adapter.close()
+        if adapter:
+            await adapter.close()
 
     if match and status != "failed":
         try:

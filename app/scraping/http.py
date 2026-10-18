@@ -20,12 +20,12 @@ class Fetcher:
 
     def __init__(self, delay: float = 1.0, retries: int = 3, timeout: float = 30.0,
                  respect_robots: bool = True, headers: dict | None = None,
-                 transport: httpx.AsyncBaseTransport | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None, proxy: str | None = None):
         self.delay = delay
         self.retries = retries
         self.respect_robots = respect_robots
         self._client = httpx.AsyncClient(
-            timeout=timeout, follow_redirects=True, transport=transport,
+            timeout=timeout, follow_redirects=True, transport=transport, proxy=proxy,
             headers={"User-Agent": settings.user_agent, "Accept-Language": "ru,en;q=0.8", **(headers or {})},
         )
         self._lock = asyncio.Lock()
