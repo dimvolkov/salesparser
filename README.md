@@ -77,10 +77,25 @@ config:
 Проверить конфиг без ожидания расписания: `docker compose exec worker python -m app.worker run --source shop1`,
 затем смотреть `/admin/runs`.
 
+## Доступ
+
+Весь сайт, кроме страницы входа и демо-магазинов, доступен только после входа (как в icebreaker):
+пароли хранятся в виде scrypt-хеша, сессия — подписанная `SECRET_KEY` HttpOnly-cookie на 30 дней,
+пользователь перечитывается из базы на каждом запросе, POST с чужих страниц отсекаются по `Origin`.
+
+| Роль | Что может |
+|---|---|
+| Наблюдатель | каталог, карточки, CSV |
+| Менеджер | + админка: запуск сбора, маппинг категорий, сопоставление товаров |
+| Администратор | + пользователи (`/admin/users`) |
+
+Первый администратор создаётся из `ADMIN_LOGIN`/`ADMIN_PASSWORD`, когда таблица пользователей пуста.
+Эти же данные — аварийный вход: работают, даже если пароль в базе забыт или пользователь отключён.
+
 ## Деплой в Dokploy
 
 1. Создайте Compose-проект из этого репозитория, в Environment задайте переменные из `.env.example`
-   (обязательно `DOMAIN`, `ADMIN_TOKEN`, `POSTGRES_PASSWORD`).
+   (обязательно `DOMAIN` — без `https://` и слеша, `SECRET_KEY`, `ADMIN_PASSWORD`, `POSTGRES_PASSWORD`).
 2. Маршрут описан Traefik-лейблами в `docker-compose.yml`, `api` подключён к внешней сети `dokploy-network`
    — домен в UI Dokploy добавлять не нужно.
 3. Healthcheck `api` выполняется через Python (в slim-образе нет wget/curl). Если Traefik отдаёт 404
@@ -95,7 +110,7 @@ uv venv -p 3.12 && uv pip install -e ".[dev]"
 docker run -d --name sp-db -e POSTGRES_USER=salesparser -e POSTGRES_PASSWORD=salesparser \
   -e POSTGRES_DB=salesparser -p 127.0.0.1:5432:5432 postgres:16-alpine
 alembic upgrade head
-uvicorn app.main:app --port 8000          # каталог, админка (ADMIN_TOKEN=change-me), демо-магазины
+ADMIN_PASSWORD=secret123 uvicorn app.main:app --port 8000   # вход admin / secret123
 python -m app.worker run                  # разовый обход
 ```
 

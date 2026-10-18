@@ -9,11 +9,18 @@
 <body>
 <header class="topbar">
   <a class="logo" href="/">SalesParser</a>
+  {% set me = request.state.user %}
+  {% if me %}
   <nav>
     <a href="/">Каталог</a>
-    <a href="/admin">Админка</a>
+    {% if me.can_edit %}<a href="/admin">Админка</a>{% endif %}
   </nav>
   <div class="meta">{% block meta %}{% endblock %}</div>
+  <div class="user">
+    <a href="/profile" title="{{ me.role_title }}">{{ me.name }}</a>
+    <form class="inline" method="post" action="/logout"><button class="btn-ghost" type="submit">Выйти</button></form>
+  </div>
+  {% endif %}
 </header>
 {% block body %}{% endblock %}
 {% block scripts %}{% endblock %}

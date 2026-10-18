@@ -1,7 +1,9 @@
 # Стек для Dokploy (Compose). Traefik находит api через внешнюю сеть dokploy-network и лейблы ниже.
 x-env: &env
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-salesparser}:${POSTGRES_PASSWORD:-salesparser}@db:5432/${POSTGRES_DB:-salesparser}
-  ADMIN_TOKEN: ${ADMIN_TOKEN:?задайте ADMIN_TOKEN}
+  SECRET_KEY: ${SECRET_KEY:?задайте SECRET_KEY}
+  ADMIN_LOGIN: ${ADMIN_LOGIN:-admin}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?задайте ADMIN_PASSWORD}
   TIMEZONE: ${TIMEZONE:-Europe/Moscow}
   SCRAPE_CRON: ${SCRAPE_CRON:-0 3 * * *}
   DEMO_ENABLED: ${DEMO_ENABLED:-true}

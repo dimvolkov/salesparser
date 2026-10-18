@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Профиль{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)"><main>
+  <h1>Профиль</h1>
+  <p class="sub">{{ request.state.user.login }} · {{ request.state.user.role_title }}</p>
+  {% if saved %}<div class="notice ok">Сохранено</div>{% endif %}
+  {% if error == "short" %}<div class="notice err">Пароль не короче 8 символов</div>{% endif %}
+  {% if error == "current" %}<div class="notice err">Текущий пароль указан неверно</div>{% endif %}
+  <form class="card form-grid" method="post" action="/profile">
+    <label>Имя<input type="text" name="full_name" value="{{ request.state.user.name if request.state.user.name != request.state.user.login else '' }}"></label>
+    <label>Текущий пароль<input type="password" name="current_password" autocomplete="current-password"></label>
+    <label>Новый пароль (не меняется, если пусто)<input type="password" name="password" autocomplete="new-password" minlength="8"></label>
+    <div><button type="submit">Сохранить</button></div>
+  </form>
+</main></div>
+{% endblock %}

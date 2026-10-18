@@ -1,31 +1,18 @@
-import hmac
-
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import auth
+from app.auth import Principal
 from app.catalog import refresh_products
 from app.config import settings
 from app.db import get_session
-from app.models import Product, ScrapeRun, Source, SourceCategory, SourceProduct
+from app.models import Product, ScrapeRun, Source, SourceCategory, SourceProduct, User
 from app.normalize import normalize_ean, normalize_sku
 from app.web.common import category_tree, flat_tree, load_sources, templates
 
-COOKIE = "sp_admin"
-
-
-def is_admin(request: Request) -> bool:
-    return hmac.compare_digest(request.cookies.get(COOKIE, ""), settings.admin_token)
-
-
-def require_admin(request: Request):
-    if not is_admin(request):
-        raise HTTPException(303, headers={"Location": f"/admin/login?next={request.url.path}"})
-
-
-router = APIRouter(prefix="/admin")
-protected = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/admin", dependencies=[Depends(auth.manager)])
 
 
 def back(request: Request, default: str) -> RedirectResponse:
@@ -33,28 +20,7 @@ def back(request: Request, default: str) -> RedirectResponse:
     return RedirectResponse(target, status_code=303)
 
 
-@router.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request, next: str = "/admin", error: bool = False):
-    return templates.TemplateResponse(request, "admin/login.html", {"next": next, "error": error})
-
-
-@router.post("/login")
-async def login(token: str = Form(...), next: str = Form("/admin")):
-    if not hmac.compare_digest(token, settings.admin_token):
-        return RedirectResponse(f"/admin/login?error=1&next={next}", status_code=303)
-    resp = RedirectResponse(next if next.startswith("/admin") else "/admin", status_code=303)
-    resp.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=30 * 86400)
-    return resp
-
-
-@router.get("/logout")
-async def logout():
-    resp = RedirectResponse("/", status_code=303)
-    resp.delete_cookie(COOKIE)
-    return resp
-
-
-@protected.get("", response_class=HTMLResponse)
+@router.get("", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)):
     sources = await load_sources(session, enabled_only=False)
     last_runs = {}
@@ -75,13 +41,13 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     })
 
 
-@protected.post("/sources/{source_id}/run")
+@router.post("/sources/{source_id}/run")
 async def queue_run(request: Request, source_id: int, session: AsyncSession = Depends(get_session)):
     await _queue(session, [source_id])
     return back(request, "/admin")
 
 
-@protected.post("/run-all")
+@router.post("/run-all")
 async def queue_all(request: Request, session: AsyncSession = Depends(get_session)):
     ids = (await session.scalars(select(Source.id).where(Source.enabled))).all()
     await _queue(session, list(ids))
@@ -97,7 +63,7 @@ async def _queue(session: AsyncSession, ids: list[int]):
     await session.commit()
 
 
-@protected.post("/sources/{source_id}/toggle")
+@router.post("/sources/{source_id}/toggle")
 async def toggle(request: Request, source_id: int, session: AsyncSession = Depends(get_session)):
     source = await session.get(Source, source_id)
     if source:
@@ -106,14 +72,14 @@ async def toggle(request: Request, source_id: int, session: AsyncSession = Depen
     return back(request, "/admin")
 
 
-@protected.get("/runs", response_class=HTMLResponse)
+@router.get("/runs", response_class=HTMLResponse)
 async def runs(request: Request, session: AsyncSession = Depends(get_session)):
     rows = (await session.execute(
         select(ScrapeRun, Source.title).join(Source).order_by(ScrapeRun.id.desc()).limit(100))).all()
     return templates.TemplateResponse(request, "admin/runs.html", {"rows": rows})
 
 
-@protected.get("/categories", response_class=HTMLResponse)
+@router.get("/categories", response_class=HTMLResponse)
 async def categories(request: Request, source: int | None = None, only_unmapped: bool = False,
                      session: AsyncSession = Depends(get_session)):
     sources = [s for s in await load_sources(session, enabled_only=False) if not s.is_master]
@@ -132,7 +98,7 @@ async def categories(request: Request, source: int | None = None, only_unmapped:
     })
 
 
-@protected.post("/categories/{sc_id}")
+@router.post("/categories/{sc_id}")
 async def map_category(request: Request, sc_id: int, category_id: str = Form(""),
                        session: AsyncSession = Depends(get_session)):
     sc = await session.get(SourceCategory, sc_id)
@@ -148,7 +114,7 @@ async def map_category(request: Request, sc_id: int, category_id: str = Form("")
     return back(request, "/admin/categories")
 
 
-@protected.get("/unmatched", response_class=HTMLResponse)
+@router.get("/unmatched", response_class=HTMLResponse)
 async def unmatched(request: Request, session: AsyncSession = Depends(get_session)):
     rows = (await session.execute(
         select(SourceProduct, Source.title).join(Source).where(SourceProduct.product_id.is_(None))
@@ -162,7 +128,7 @@ async def unmatched(request: Request, session: AsyncSession = Depends(get_sessio
     return templates.TemplateResponse(request, "admin/unmatched.html", {"rows": rows, "candidates": candidates})
 
 
-@protected.post("/unmatched/{sp_id}/link")
+@router.post("/unmatched/{sp_id}/link")
 async def link_product(request: Request, sp_id: int, product_id: str = Form(""),
                        session: AsyncSession = Depends(get_session)):
     sp = await session.get(SourceProduct, sp_id)
@@ -181,7 +147,7 @@ async def link_product(request: Request, sp_id: int, product_id: str = Form(""),
     return back(request, "/admin/unmatched")
 
 
-@protected.post("/unmatched/{sp_id}/create")
+@router.post("/unmatched/{sp_id}/create")
 async def create_product(request: Request, sp_id: int, session: AsyncSession = Depends(get_session)):
     sp = await session.get(SourceProduct, sp_id)
     if sp is None:
@@ -201,7 +167,7 @@ async def create_product(request: Request, sp_id: int, session: AsyncSession = D
     return back(request, "/admin/unmatched")
 
 
-@protected.post("/source-products/{sp_id}/unlink")
+@router.post("/source-products/{sp_id}/unlink")
 async def unlink(request: Request, sp_id: int, session: AsyncSession = Depends(get_session)):
     """Отвязать ошибочно сопоставленный товар источника: он уйдёт в «Несопоставленные»."""
     sp = await session.get(SourceProduct, sp_id)
@@ -210,3 +176,49 @@ async def unlink(request: Request, sp_id: int, session: AsyncSession = Depends(g
         await session.commit()
     return back(request, "/admin/unmatched")
 
+
+# ── Пользователи (только администратор) ───────────────────────────────
+
+@router.get("/users", response_class=HTMLResponse)
+async def users(request: Request, error: str = "", who: Principal = Depends(auth.admin),
+                session: AsyncSession = Depends(get_session)):
+    rows = (await session.scalars(select(User).order_by(User.created_at))).all()
+    return templates.TemplateResponse(request, "admin/users.html", {"rows": rows, "roles": auth.ROLES,
+                                                                     "error": error})
+
+
+@router.post("/users")
+async def create_user(login: str = Form(""), password: str = Form(""), full_name: str = Form(""),
+                      role: str = Form("viewer"), who: Principal = Depends(auth.admin),
+                      session: AsyncSession = Depends(get_session)):
+    login = login.strip().lower()
+    if not login or len(password) < 8:
+        return RedirectResponse("/admin/users?error=short", status_code=303)
+    if role not in auth.ROLES:
+        raise HTTPException(400, "Неизвестная роль")
+    if await session.scalar(select(User.id).where(User.login == login)):
+        return RedirectResponse("/admin/users?error=exists", status_code=303)
+    session.add(User(login=login, password_hash=auth.hash_password(password), full_name=full_name.strip(),
+                     role=role))
+    await session.commit()
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@router.post("/users/{user_id}")
+async def update_user(user_id: int, role: str = Form(...), disabled: bool = Form(False),
+                      full_name: str = Form(""), password: str = Form(""),
+                      who: Principal = Depends(auth.admin), session: AsyncSession = Depends(get_session)):
+    if role not in auth.ROLES:
+        raise HTTPException(400, "Неизвестная роль")
+    if user_id == who.id and (disabled or role != "admin"):
+        return RedirectResponse("/admin/users?error=self", status_code=303)
+    user = await session.get(User, user_id)
+    if user is None:
+        raise HTTPException(404)
+    if password:
+        if len(password) < 8:
+            return RedirectResponse("/admin/users?error=short", status_code=303)
+        user.password_hash = auth.hash_password(password)
+    user.role, user.disabled, user.full_name = role, disabled, full_name.strip()
+    await session.commit()
+    return RedirectResponse("/admin/users", status_code=303)

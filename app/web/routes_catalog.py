@@ -7,13 +7,12 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import analysis
+from app import analysis, auth
 from app.db import get_session
 from app.models import Product, ScrapeRun
-from app.web.routes_admin import is_admin
 from app.web.common import breadcrumbs, category_tree, descendants, load_sources, money, templates
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(auth.viewer)])
 PER_PAGE = 50
 
 
@@ -96,5 +95,5 @@ async def product_page(request: Request, product_id: int, session: AsyncSession 
               for sid, points in history.items() if sid in titles]
     return templates.TemplateResponse(request, "product.html", {
         "product": product, "row": rows[0] if rows else None, "sources": sources, "series": series,
-        "crumbs": breadcrumbs(nodes, product.category_id), "is_admin": is_admin(request),
+        "crumbs": breadcrumbs(nodes, product.category_id), "can_edit": request.state.user.can_edit,
     })

@@ -22,6 +22,13 @@ a:hover { text-decoration: underline; }
 .topbar .logo { font-weight: 700; font-size: 16px; color: var(--text); }
 .topbar nav { display: flex; gap: 16px; }
 .topbar .meta { margin-left: auto; color: var(--muted); font-size: 13px; }
+.topbar .user { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.topbar .user button { padding: 4px 10px; font-size: 13px; }
+.form-grid { display: grid; gap: 12px; max-width: 420px; }
+.form-grid label { display: grid; gap: 4px; color: var(--muted); font-size: 13px; }
+.notice { padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; }
+.notice.ok { background: var(--min-bg); color: var(--min-text); }
+.notice.err { background: var(--max-bg); color: var(--max-text); }
 .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; padding: 24px; }
 .sidebar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 12px; align-self: start; position: sticky; top: 72px; max-height: calc(100vh - 96px); overflow: auto; }

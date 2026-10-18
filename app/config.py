@@ -1,3 +1,4 @@
+import secrets
 from zoneinfo import ZoneInfo
 from datetime import date, datetime
 
@@ -12,7 +13,12 @@ class Settings(BaseSettings):
     scrape_cron: str = "0 3 * * *"
     timezone: str = "Europe/Moscow"
     run_on_start: bool = False
-    admin_token: str = "change-me"
+    # Подпись сессионных cookie; без него сессии сбрасываются при каждом перезапуске
+    secret_key: str = ""
+    # Первый администратор (создаётся при пустой таблице users) и аварийный вход
+    admin_login: str = "admin"
+    admin_password: str = ""
+    session_ttl_s: int = 30 * 24 * 3600
     sources_dir: str = "sources"
     # Встроенные демо-магазины (/demo/a|b|c) для проверки конвейера без реальных сайтов
     demo_enabled: bool = True
@@ -31,3 +37,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+SECRET_KEY_SET = bool(settings.secret_key)
+if not settings.secret_key:
+    settings.secret_key = secrets.token_hex(32)

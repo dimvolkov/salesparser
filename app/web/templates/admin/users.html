@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Пользователи{% endblock %}
+{% block body %}
+<div class="layout" style="grid-template-columns: minmax(0,1fr)"><main>
+  {% set active = "users" %}{% include "admin/_nav.html" %}
+  <h1>Пользователи</h1>
+  <p class="sub">Наблюдатель видит каталог; менеджер ещё запускает сбор, маппит категории и сопоставляет товары; администратор управляет пользователями.</p>
+  {% set messages = {"short": "Нужны логин и пароль не короче 8 символов", "exists": "Такой логин уже есть",
+                     "self": "Нельзя снять права или отключить самого себя"} %}
+  {% if error in messages %}<div class="notice err">{{ messages[error] }}</div>{% endif %}
+  <div class="table-wrap" style="margin-bottom:16px">
+  <table>
+    <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Отключён</th><th>Новый пароль</th><th>Последний вход</th><th></th></tr></thead>
+    <tbody>
+    {% for u in rows %}
+    <tr>{% set f = "u" ~ u.id %}
+      <td><b>{{ u.login }}</b></td>
+      <td><input form="{{ f }}" type="text" name="full_name" value="{{ u.full_name }}" size="18"></td>
+      <td><select form="{{ f }}" name="role">{% for key, title in roles.items() %}<option value="{{ key }}" {{ "selected" if u.role == key }}>{{ title }}</option>{% endfor %}</select></td>
+      <td><input form="{{ f }}" type="checkbox" name="disabled" value="true" {{ "checked" if u.disabled }}></td>
+      <td><input form="{{ f }}" type="password" name="password" placeholder="не менять" size="12" autocomplete="new-password"></td>
+      <td class="sub">{{ u.last_login_at|localdt or "—" }}</td>
+      <td><form id="{{ f }}" method="post" action="/admin/users/{{ u.id }}"><button type="submit">Сохранить</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <h3>Новый пользователь</h3>
+  <form class="filters" method="post" action="/admin/users">
+    <input type="text" name="login" placeholder="Логин" required>
+    <input type="text" name="full_name" placeholder="Имя">
+    <input type="password" name="password" placeholder="Пароль, от 8 символов" minlength="8" required autocomplete="new-password">
+    <select name="role">{% for key, title in roles.items() %}<option value="{{ key }}" {{ "selected" if key == "viewer" }}>{{ title }}</option>{% endfor %}</select>
+    <button type="submit">Добавить</button>
+  </form>
+</main></div>
+{% endblock %}

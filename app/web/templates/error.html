@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Ошибка {{ exc.status_code }}{% endblock %}
+{% block body %}
+<div class="card login empty">
+  <h1>{{ {403: "Нет доступа", 404: "Не найдено"}.get(exc.status_code, "Ошибка") }}</h1>
+  <p>{{ exc.detail if exc.detail and exc.detail not in ("Not Found", "Forbidden") else "" }}</p>
+  <a class="btn" href="/">В каталог</a>
+</div>
+{% endblock %}

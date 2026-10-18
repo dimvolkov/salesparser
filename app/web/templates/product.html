@@ -16,7 +16,7 @@
   </div>
   <div class="table-wrap" style="margin-bottom:16px">
     <table>
-      <thead><tr><th>Источник</th><th class="num">Цена</th><th class="num">Старая цена</th><th class="num">К минимуму</th><th class="num">Изменение</th><th>Наличие</th>{% if is_admin %}<th></th>{% endif %}</tr></thead>
+      <thead><tr><th>Источник</th><th class="num">Цена</th><th class="num">Старая цена</th><th class="num">К минимуму</th><th class="num">Изменение</th><th>Наличие</th>{% if can_edit %}<th></th>{% endif %}</tr></thead>
       <tbody>
       {% for s in sources %}{% set o = row.offers.get(s.id) %}
       <tr>
@@ -27,9 +27,9 @@
         <td class="num">{% if o.in_stock and row.min_price and o.price > row.min_price %}+{{ ((o.price - row.min_price) / row.min_price * 100)|round(1) }}%{% endif %}</td>
         <td class="num">{% if o.delta %}<span class="{{ 'up' if o.delta > 0 else 'down' }}">{{ o.delta|signed }}</span>{% endif %}</td>
         <td>{{ "в наличии" if o.in_stock else "нет" }}</td>
-        {% if is_admin %}<td><form class="inline" method="post" action="/admin/source-products/{{ o.sp_id }}/unlink"
+        {% if can_edit %}<td><form class="inline" method="post" action="/admin/source-products/{{ o.sp_id }}/unlink"
           onsubmit="return confirm('Отвязать товар источника от этой позиции?')"><button class="btn-ghost" type="submit">Отвязать</button></form></td>{% endif %}
-        {% else %}<td class="price none" colspan="{{ 6 if is_admin else 5 }}">нет у источника</td>{% endif %}
+        {% else %}<td class="price none" colspan="{{ 6 if can_edit else 5 }}">нет у источника</td>{% endif %}
       </tr>
       {% endfor %}
       </tbody>

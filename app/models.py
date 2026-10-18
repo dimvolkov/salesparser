@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text,
-    UniqueConstraint, func,
+    CheckConstraint, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -120,3 +120,17 @@ class ScrapeRun(Base):
     items_found: Mapped[int] = mapped_column(Integer, default=0)
     errors_count: Mapped[int] = mapped_column(Integer, default=0)
     error_log: Mapped[str | None] = mapped_column(Text)
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('admin', 'manager', 'viewer')", name="users_role_check"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    login: Mapped[str] = mapped_column(String(100), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(300))
+    full_name: Mapped[str] = mapped_column(String(200), default="")
+    role: Mapped[str] = mapped_column(String(20), default="viewer")
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
